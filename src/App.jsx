@@ -180,6 +180,21 @@ const AuthComponent = ({ onAuthSuccess }) => {
     setError('');
 
     try {
+      // Demo mode - simulate authentication
+      if (isDemoMode) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const demoUser = {
+          id: 'demo-user-id',
+          email: email,
+          user_metadata: {
+            subscription_plan: 'starter',
+            subscription_status: 'trial'
+          }
+        };
+        onAuthSuccess(demoUser);
+        return;
+      }
+
       if (isLogin) {
         const { data, error } = await supabase.auth.signInWithPassword({
           email,
@@ -202,7 +217,7 @@ const AuthComponent = ({ onAuthSuccess }) => {
         onAuthSuccess(data.user);
       }
     } catch (error) {
-      setError(error.message);
+      setError(error.message || 'Authentication failed');
     }
     setLoading(false);
   };
@@ -614,16 +629,21 @@ const TradingDashboard = ({ user, onLogout }) => {
 
   const handlePaymentSuccess = async (paymentData) => {
     try {
-      // Update user subscription in Supabase
-      const { error } = await supabase.auth.updateUser({
-        data: {
-          subscription_plan: selectedPlan.id,
-          subscription_status: 'active',
-          payment_method: paymentData.method
-        }
-      });
-      
-      if (error) throw error;
+      // Demo mode - simulate subscription update
+      if (isDemoMode) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } else {
+        // Update user subscription in Supabase
+        const { error } = await supabase.auth.updateUser({
+          data: {
+            subscription_plan: selectedPlan.id,
+            subscription_status: 'active',
+            payment_method: paymentData.method
+          }
+        });
+        
+        if (error) throw error;
+      }
       
       setShowPayment(false);
       setSelectedPlan(null);
@@ -1010,28 +1030,37 @@ const App = () => {
 
   useEffect(() => {
     // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setUser(session.user);
-        // Check if user is admin (you can set this in Supabase user metadata)
-        setIsAdmin(session.user.email === 'admin@forexai.pro' || session.user.user_metadata?.role === 'admin');
-      }
+    if (isDemoMode) {
       setLoading(false);
-    });
+      return;
+    }
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        setUser(session.user);
-        setIsAdmin(session.user.email === 'admin@forexai.pro' || session.user.user_metadata?.role === 'admin');
-      } else {
-        setUser(null);
-        setIsAdmin(false);
-      }
+    if (supabase) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          setUser(session.user);
+          // Check if user is admin (you can set this in Supabase user metadata)
+          setIsAdmin(session.user.email === 'admin@forexai.pro' || session.user.user_metadata?.role === 'admin');
+        }
+        setLoading(false);
+      });
+
+      // Listen for auth changes
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (session) {
+          setUser(session.user);
+          setIsAdmin(session.user.email === 'admin@forexai.pro' || session.user.user_metadata?.role === 'admin');
+        } else {
+          setUser(null);
+          setIsAdmin(false);
+        }
+        setLoading(false);
+      });
+
+      return () => subscription.unsubscribe();
+    } else {
       setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+    }
   }, []);
 
   const handleAuthSuccess = (user) => {
@@ -1040,7 +1069,9 @@ const App = () => {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    if (supabase && !isDemoMode) {
+      await supabase.auth.signOut();
+    }
     setUser(null);
     setIsAdmin(false);
   };
